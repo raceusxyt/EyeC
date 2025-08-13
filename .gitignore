@@ -101,4 +101,9 @@ venv.bak/
 # mypy
 .mypy_cache/
 .dmypy.json
+
 dmypy.json
+
+# Development and unused files
+dev_files/
+archive/
