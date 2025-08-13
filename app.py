@@ -1,379 +1,218 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-import os
+from io import BytesIO
 from pathlib import Path
 
-# TensorFlow will be imported dynamically to handle compatibility issues
-tensorflow_available = None
-tf = None
-
-
-def load_labels():
-    """Load labels from file"""
-    labels = []
+# Prefer tflite-runtime; fallback to TF Lite only if available locally
+try:
+    from tflite_runtime.interpreter import Interpreter
+    BACKEND = "tflite-runtime"
+except Exception:
     try:
-        with open("labels (1).txt", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    # Remove number prefix (e.g., "1 cataract" -> "cataract")
-                    parts = line.split(" ", 1)
-                    if len(parts) > 1 and parts[0].isdigit():
-                        labels.append(parts[1])
-                    else:
-                        labels.append(line)
+        from tensorflow.lite import Interpreter  # type: ignore
+        BACKEND = "tensorflow.lite (fallback)"
     except Exception as e:
-        st.error(f"Error loading labels: {e}")
-    return labels
+        BACKEND = None
+        _IMPORT_ERR = e
 
+# -------- Page / Theme tweaks --------
+st.set_page_config(page_title="EyeC – Eye Disease Detection", page_icon="👁️", layout="centered")
+st.markdown("""
+<style>
+/* Brand accents */
+:root { --eyec-blue:#1e3a8a; --eyec-yellow:#f59e0b; }
+/* Title badge */
+.badge {display:inline-block;padding:.2rem .6rem;border-radius:9999px;background:var(--eyec-yellow);color:#111;font-weight:600;}
+/* Cards */
+.block-container {padding-top:2rem !important;}
+/* Progress label alignment */
+.prob-row {display:flex;align-items:center;gap:.5rem;margin:.25rem 0;}
+.prob-label {min-width:150px;font-weight:600;}
+/* Section header underline */
+h3 {border-bottom:3px solid rgba(245,158,11,.25);padding-bottom:.25rem;}
+</style>
+""", unsafe_allow_html=True)
 
-def check_tensorflow():
-    """Check if TensorFlow can be imported safely"""
-    global tensorflow_available, tf
-    
-    if tensorflow_available is None:
-        try:
-            # Suppress TensorFlow logging
-            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-            import tensorflow as tf_module
-            tf = tf_module
-            tensorflow_available = True
-        except Exception as e:
-            tensorflow_available = False
-            return False, str(e)
-    
-    return tensorflow_available, None
+st.title("👁️ EyeC – Eye Disease Detection")
+st.caption("Glaucoma • Cataract • Diabetic Retinopathy • Crossed Eyes • Normal  ")
+st.markdown('<span class="badge">Demo • Not a medical device</span>', unsafe_allow_html=True)
 
+# -------- Helpers --------
+@st.cache_resource
+def load_labels():
+    """Load labels from labels.txt or 'labels (1).txt' and strip numeric prefixes."""
+    for cand in ["labels.txt", "labels (1).txt"]:
+        if Path(cand).exists():
+            path = cand
+            break
+    else:
+        raise FileNotFoundError("Labels file not found (expected labels.txt or 'labels (1).txt').")
+
+    labels = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            s = line.strip()
+            if not s:
+                continue
+            parts = s.split(" ", 1)
+            if len(parts) > 1 and parts[0].isdigit():
+                labels.append(parts[1].strip())
+            else:
+                labels.append(s)
+    if not labels:
+        raise ValueError("Labels file is empty.")
+    return labels, path
 
 @st.cache_resource
-def load_model():
-    """Load the TensorFlow Lite model"""
-    tf_available, error = check_tensorflow()
-    if not tf_available:
-        return None, f"TensorFlow not available: {error}"
-    
-    try:
-        interpreter = tf.lite.Interpreter(model_path="model.tflite")
-        interpreter.allocate_tensors()
-        return interpreter, None
-    except Exception as e:
-        error_msg = str(e)
-        if "mutex lock failed" in error_msg or "Invalid argument" in error_msg:
-            return None, "macOS TensorFlow compatibility issue"
-        else:
-            return None, f"Model loading error: {error_msg}"
+def load_interpreter(model_path="model.tflite"):
+    if not BACKEND:
+        raise RuntimeError(
+            f"Could not import a TFLite interpreter. Last error: {_IMPORT_ERR}\n"
+            "Install 'tflite-runtime' (recommended) or 'tensorflow' as fallback."
+        )
+    if not Path(model_path).exists():
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+    interpreter = Interpreter(model_path=model_path)
+    interpreter.allocate_tensors()
+    inp, out = interpreter.get_input_details()[0], interpreter.get_output_details()[0]
+    return interpreter, inp, out, BACKEND
 
+def compress_image(image: Image.Image, max_size_kb=350, quality=85) -> Image.Image:
+    """JPEG/PNG compress to speed uploads (esp. mobile)."""
+    img = image.convert("RGB")
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=quality, optimize=True)
+    while buf.tell()/1024 > max_size_kb and quality > 25:
+        quality -= 5
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+    buf.seek(0)
+    return Image.open(buf).convert("RGB")
 
-def preprocess_image(image):
-    """Preprocess image for model input"""
-    # Resize to 224x224 as expected by the model
-    image = image.convert('RGB')
-    image = image.resize((224, 224))
-    
-    # Convert to numpy array and normalize
-    img_array = np.array(image, dtype=np.float32)
-    img_array = img_array / 255.0  # Normalize to [0, 1]
-    
-    # Add batch dimension
-    img_array = np.expand_dims(img_array, axis=0)
-    
-    return img_array
+def preprocess(image: Image.Image, input_detail):
+    """Resize & normalize to match model input; handles NHWC/NCHW and float/uint8."""
+    shape = input_detail["shape"]  # [1,H,W,C] or [1,C,H,W]
+    if len(shape) != 4:
+        raise RuntimeError(f"Unexpected input shape: {shape}")
 
-
-def predict_disease(image, interpreter, labels):
-    """Make prediction using the TensorFlow Lite model"""
-    if interpreter is None:
-        return None
-        
-    try:
-        # Preprocess the image
-        processed_image = preprocess_image(image)
-        
-        # Get input and output details
-        input_details = interpreter.get_input_details()
-        output_details = interpreter.get_output_details()
-        
-        # Set the input tensor
-        interpreter.set_tensor(input_details[0]['index'], processed_image)
-        
-        # Run inference
-        interpreter.invoke()
-        
-        # Get the output
-        predictions = interpreter.get_tensor(output_details[0]['index'])
-        
-        # Apply softmax if needed (some models output raw logits)
-        if tensorflow_available:
-            probabilities = tf.nn.softmax(predictions[0]).numpy()
-        else:
-            # Manual softmax implementation
-            exp_predictions = np.exp(predictions[0] - np.max(predictions[0]))
-            probabilities = exp_predictions / np.sum(exp_predictions)
-        
-        return probabilities
-        
-    except Exception as e:
-        st.error(f"Error during prediction: {e}")
-        return None
-
-
-def fallback_prediction(image, labels):
-    """
-    Fallback prediction when TensorFlow fails (e.g., on macOS).
-    Uses image analysis to provide reasonable demonstrations.
-    """
-    # Analyze image properties
-    img_array = np.array(image.convert("RGB"))
-    
-    # Basic image characteristics for demo purposes
-    brightness = np.mean(img_array)
-    contrast = np.std(img_array)
-    red_intensity = np.mean(img_array[:,:,0])
-    
-    # Create deterministic probabilities based on image characteristics
-    np.random.seed(int(brightness + contrast + red_intensity) % 1000)
-    
-    # Generate base probabilities
-    base_probs = np.random.dirichlet(np.ones(len(labels)) * 3.0)
-    
-    # Simple heuristics for demo (not medical analysis)
-    for i, label in enumerate(labels):
-        if "normal" in label.lower():
-            if brightness > 140:  # Brighter images more likely normal
-                base_probs[i] *= 1.3
-        elif "cataract" in label.lower():
-            if brightness < 100:  # Darker images might suggest cataract
-                base_probs[i] *= 1.2
-    
-    # Normalize probabilities
-    base_probs = base_probs / np.sum(base_probs)
-    
-    return base_probs
-
-
-def main():
-    st.set_page_config(
-        page_title="Eye Disease Detector", page_icon="👁️", layout="centered"
-    )
-
-    st.title("👁️ Eye Disease Detection System")
-    st.markdown("**AI-powered eye disease screening demonstration**")
-
-    # Check required files
-    model_exists = Path("model.tflite").exists()
-    labels_exist = Path("labels (1).txt").exists()
-
-    if not labels_exist:
-        st.error("❌ Labels file 'labels (1).txt' not found")
-        st.stop()
-
-    # Load labels
-    labels = load_labels()
-    if not labels:
-        st.error("❌ Could not load labels")
-        st.stop()
-
-    # Load model
-    interpreter = None
-    use_fallback = False
-    if model_exists:
-        interpreter, error = load_model()
-        if interpreter is not None:
-            st.success("✅ TensorFlow model loaded successfully")
-        elif "macOS TensorFlow compatibility issue" in str(error) or "TensorFlow not available" in str(error):
-            st.warning("⚠️ TensorFlow compatibility issue detected")
-            st.info("🔧 Using fallback prediction system for demonstration")
-            use_fallback = True
-        else:
-            st.error(f"❌ Failed to load model: {error}")
-            st.stop()
+    nchw = (shape[1] in (1,3)) and (shape[-1] not in (1,3))
+    if nchw:
+        c, h, w = int(shape[1]), int(shape[2]), int(shape[3])
     else:
-        st.error("❌ Model file not found")
-        st.stop()
+        h, w, c = int(shape[1]), int(shape[2]), int(shape[3])
 
-    # Show detection capabilities
-    st.subheader("🎯 AI Detection Capabilities")
+    img = image.convert("RGB").resize((w, h))
+    arr = np.array(img)
 
-    cols = st.columns(len(labels))
-    for i, label in enumerate(labels):
-        with cols[i]:
-            if label.lower() == "normal":
-                st.success(f"✅ **{label.title()}**")
+    if input_detail["dtype"] == np.uint8:
+        tensor = arr.astype(np.uint8)  # quantized expects [0,255]
+    else:
+        tensor = arr.astype(np.float32) / 255.0  # float32 expects [0,1]
+
+    if nchw:
+        tensor = np.transpose(tensor, (2, 0, 1))  # HWC -> CHW
+    tensor = np.expand_dims(tensor, 0)
+    return tensor
+
+def infer(image: Image.Image, interpreter, inp, out):
+    x = preprocess(image, inp)
+    interpreter.set_tensor(inp["index"], x)
+    interpreter.invoke()
+    y = interpreter.get_tensor(out["index"])[0]
+
+    # Dequantize output if needed
+    if out["dtype"] == np.uint8:
+        scale, zp = out.get("quantization", (0.0, 0))
+        y = (y.astype(np.float32) - zp) * (scale if scale else 1.0)
+
+    # Softmax to probabilities
+    y = y - np.max(y)
+    probs = np.exp(y) / np.sum(np.exp(y))
+    return probs
+
+# -------- Load assets --------
+try:
+    labels, labels_path = load_labels()
+except Exception as e:
+    st.error(f"Labels error: {e}")
+    st.stop()
+
+try:
+    interpreter, inp, out, backend = load_interpreter("model.tflite")
+except Exception as e:
+    st.error(f"Model load error: {e}")
+    st.stop()
+
+with st.expander("🔧 Model & App Info"):
+    size_mb = Path("model.tflite").stat().st_size / (1024*1024)
+    st.write(f"**Interpreter**: {backend}")
+    st.write(f"**Model**: model.tflite ({size_mb:.2f} MB)")
+    st.write(f"**Input**: shape {inp['shape']}, dtype `{inp['dtype']}`")
+    st.write(f"**Output**: shape {out['shape']}, dtype `{out['dtype']}`")
+    st.write(f"**Labels**: from `{labels_path}`")
+
+# -------- UI: Upload / Camera --------
+st.subheader("📸 Upload or Take a Photo")
+uploaded = st.file_uploader(
+    "Upload or take a photo of your eye",
+    type=["png", "jpg", "jpeg"],
+    accept_multiple_files=False,
+    help="On mobile, tap to use your camera or choose from your gallery."
+)
+
+if uploaded:
+    try:
+        img = Image.open(uploaded).convert("RGB")
+        img = compress_image(img)  # faster on mobile
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            st.image(img, caption="Uploaded image", use_container_width=True)
+        with c2:
+            st.info(f"**Size:** {img.size[0]}×{img.size[1]}\n\n**Mode:** RGB")
+
+        st.divider()
+        if st.button("🚀 Run Disease Detection", type="primary", use_container_width=True):
+            with st.spinner("Analyzing…"):
+                probs = infer(img, interpreter, inp, out)
+
+            idx = int(np.argmax(probs))
+            name = labels[idx] if idx < len(labels) else f"Class {idx}"
+            p = float(probs[idx])
+
+            st.markdown("### 🎯 Primary Result")
+            if name.lower() == "normal":
+                st.success(f"✅ **HEALTHY EYE DETECTED**")
+                st.metric("Confidence", f"{p:.1%}")
+                st.balloons()
             else:
-                st.info(f"🔍 **{label.title()}**")
+                st.warning(f"⚠️ **{name.upper()} DETECTED**")
+                st.metric("Confidence", f"{p:.1%}")
 
-    st.markdown("---")
-
-    # File uploader
-    uploaded_file = st.file_uploader(
-        "📁 Upload Eye Image for Analysis",
-        type=["png", "jpg", "jpeg"],
-        help="Select a clear, well-lit eye image for analysis",
-    )
-
-    if uploaded_file is not None:
-        try:
-            image = Image.open(uploaded_file)
-
-            # Display uploaded image
-            st.subheader("📷 Uploaded Image")
-
-            col1, col2 = st.columns([2, 1])
-
-            with col1:
-                st.image(
-                    image, caption="Eye image for analysis", use_container_width=True
+            st.markdown("### 📊 Detailed Probabilities")
+            order = np.argsort(probs)[::-1]
+            for rank, j in enumerate(order, 1):
+                label = labels[j] if j < len(labels) else f"Class {j}"
+                pj = float(probs[j])
+                st.markdown(
+                    f'<div class="prob-row"><div class="prob-label">{("🥇" if rank==1 else "🥈" if rank==2 else "🥉" if rank==3 else str(rank)+".")} {label.title()}</div><div style="flex:1">{int(pj*1000)/10:.1f}%</div></div>',
+                    unsafe_allow_html=True
                 )
+                st.progress(pj)
 
-            with col2:
-                st.info(f"**Size:** {image.size[0]} × {image.size[1]} pixels")
-                st.info(f"**Format:** {image.format}")
-                st.info(f"**Mode:** {image.mode}")
-
-            # Analysis section
-            st.markdown("---")
-            st.subheader("🔬 AI Analysis")
-
-            if st.button(
-                "🚀 Run Disease Detection", type="primary", use_container_width=True
-            ):
-                with st.spinner("🤖 Analyzing eye image..."):
-                    if use_fallback:
-                        # Use fallback prediction for compatibility
-                        probabilities = fallback_prediction(image, labels)
-                    else:
-                        # Use real TensorFlow model for prediction
-                        probabilities = predict_disease(image, interpreter, labels)
-
-                if probabilities is not None:
-                    # Display results
-                    st.success("✅ Analysis Complete!")
-
-                    # Get top prediction
-                    top_idx = np.argmax(probabilities)
-                    top_label = labels[top_idx]
-                    top_confidence = probabilities[top_idx]
-
-                    # Main result with visual emphasis
-                    st.markdown("### 🎯 Primary Detection Result")
-
-                    if top_label.lower() == "normal":
-                        st.success(f"✅ **HEALTHY EYE DETECTED**")
-                        st.balloons()  # Celebration for healthy result
-                    else:
-                        st.warning(f"⚠️ **{top_label.upper()} DETECTED**")
-
-                    # Confidence metric
-                    st.metric("Confidence Level", f"{top_confidence:.1%}")
-
-                    # Detailed analysis
-                    st.markdown("### 📊 Detailed Analysis Results")
-
-                    # Sort predictions by confidence
-                    sorted_indices = np.argsort(probabilities)[::-1]
-
-                    for rank, idx in enumerate(sorted_indices, 1):
-                        label = labels[idx]
-                        prob = probabilities[idx]
-
-                        col1, col2, col3 = st.columns([1, 3, 2])
-
-                        with col1:
-                            if rank == 1:
-                                st.write("🥇")
-                            elif rank == 2:
-                                st.write("🥈")
-                            elif rank == 3:
-                                st.write("🥉")
-                            else:
-                                st.write(f"{rank}.")
-
-                        with col2:
-                            st.write(f"**{label.title()}**")
-
-                        with col3:
-                            st.write(f"**{prob:.1%}**")
-
-                        # Progress bar
-                        st.progress(float(prob))
-
-                    # Technical and Medical disclaimers
-                    st.markdown("---")
-                    if use_fallback:
-                        st.info(
-                            """
-                        🔧 **Technical Note**: Results shown are from a fallback prediction system 
-                        due to TensorFlow compatibility issues on macOS. This demonstrates the 
-                        interface functionality but does not use the actual trained model.
-                        """
-                        )
-                    
-                    st.warning(
-                        """
-                    ⚠️ **Medical Disclaimer**: This tool is for educational and demonstration 
-                    purposes only. It should NOT be used for actual medical diagnosis or treatment 
-                    decisions. Always consult qualified healthcare professionals for proper 
-                    medical evaluation and diagnosis of eye conditions.
-                    """
+            st.divider()
+            st.warning(
+                "⚠️ **Medical Disclaimer**: EyeC is a research/education demo and not a medical device. "
+                "For any symptoms or concerns, consult a licensed ophthalmologist."
+            )
+            if name.lower() != "normal":
+                with st.expander("🩺 What to do next"):
+                    st.markdown(
+                        "- Schedule a comprehensive eye exam with an ophthalmologist.\n"
+                        "- Bring this result as a reference; the doctor may perform OCT/fundus tests.\n"
+                        "- Maintain good lighting and a sharp image for re-checks."
                     )
-                else:
-                    st.error("❌ Failed to analyze the image. Please try again with a different image.")
-
-        except Exception as e:
-            st.error(f"Error processing image: {e}")
-
-    else:
-        # Welcome and instructions
-        st.info("👆 Upload an eye image above to begin AI analysis")
-
-        with st.expander("📖 How to Use This Demo", expanded=True):
-            st.markdown(
-                """
-            ### 🚀 Quick Start:
-            1. **Upload Image**: Click the file uploader and select an eye image
-            2. **Supported Formats**: PNG, JPG, JPEG files
-            3. **Run Analysis**: Click "Run Disease Detection" button
-            4. **View Results**: See AI predictions and confidence scores
-            
-            ### 💡 Image Guidelines:
-            - Use **clear, high-resolution** images
-            - Ensure **good lighting** conditions
-            - Keep the **eye centered** and in focus
-            - Avoid **blurry, dark, or low-quality** images
-            
-            ### 🔬 About This Demo:
-            - **Purpose**: AI-powered eye disease detection system
-            - **Technology**: TensorFlow Lite deep learning model
-            - **Status**: Attempts real AI model, fallback on compatibility issues
-            - **Educational**: Demonstrates AI medical screening workflow
-            """
-            )
-
-        with st.expander("🔧 Technical Information"):
-            st.markdown(
-                """
-            ### Model Architecture:
-            - **Framework**: TensorFlow Lite for optimized inference
-            - **Input Format**: 224×224 RGB images
-            - **Preprocessing**: Normalization to [0, 1] range
-            - **Output**: Probability distribution across disease classes
-            
-            ### Supported Conditions:
-            - **Cataract**: Clouding of the eye's lens
-            - **Crossed Eyes**: Misalignment of the eyes
-            - **Diabetic Retinopathy**: Diabetes-related eye damage
-            - **Glaucoma**: Optic nerve damage
-            - **Normal**: Healthy eye condition
-            
-            ### Performance Considerations:
-            - **Model Size**: Optimized TensorFlow Lite format
-            - **Inference Speed**: Fast local processing
-            - **Memory Usage**: Efficient resource utilization
-            - **Platform Support**: Cross-platform compatibility
-            """
-            )
-
-
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        st.error(f"Error processing image: {e}")
+else:
+    st.info("👆 Tap above to take a photo or choose one from your gallery.")
