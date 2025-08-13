@@ -12,7 +12,7 @@ from pathlib import Path
 
 def check_requirements():
     """Check if required files exist"""
-    required_files = ["app.py", "labels (1).txt", "requirements.txt"]
+    required_files = ["app.py", "labels.txt", "requirements.txt"]
 
     missing_files = []
     for file in required_files:
@@ -97,3 +97,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
