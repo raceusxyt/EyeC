@@ -1,5 +1,4 @@
 cataract
-crossed_eyes
-diebetic retinopathy
+diabetic retinopathy
 glaucoma
 normal
