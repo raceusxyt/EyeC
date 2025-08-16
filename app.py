@@ -1,218 +1,171 @@
 import streamlit as st
-import numpy as np
 from PIL import Image
-from io import BytesIO
-from pathlib import Path
+import numpy as np
+import tensorflow as tf
+import time
+import os
 
-# Prefer tflite-runtime; fallback to TF Lite only if available locally
-try:
-    from tflite_runtime.interpreter import Interpreter
-    BACKEND = "tflite-runtime"
-except Exception:
-    try:
-        from tensorflow.lite import Interpreter  # type: ignore
-        BACKEND = "tensorflow.lite (fallback)"
-    except Exception as e:
-        BACKEND = None
-        _IMPORT_ERR = e
-
-# -------- Page / Theme tweaks --------
-st.set_page_config(page_title="EyeC – Eye Disease Detection", page_icon="👁️", layout="centered")
-st.markdown("""
-<style>
-/* Brand accents */
-:root { --eyec-blue:#1e3a8a; --eyec-yellow:#f59e0b; }
-/* Title badge */
-.badge {display:inline-block;padding:.2rem .6rem;border-radius:9999px;background:var(--eyec-yellow);color:#111;font-weight:600;}
-/* Cards */
-.block-container {padding-top:2rem !important;}
-/* Progress label alignment */
-.prob-row {display:flex;align-items:center;gap:.5rem;margin:.25rem 0;}
-.prob-label {min-width:150px;font-weight:600;}
-/* Section header underline */
-h3 {border-bottom:3px solid rgba(245,158,11,.25);padding-bottom:.25rem;}
-</style>
-""", unsafe_allow_html=True)
-
-st.title("👁️ EyeC – Eye Disease Detection")
-st.caption("Glaucoma • Cataract • Diabetic Retinopathy • Crossed Eyes • Normal  ")
-st.markdown('<span class="badge">Demo • Not a medical device</span>', unsafe_allow_html=True)
-
-# -------- Helpers --------
-@st.cache_resource
-def load_labels():
-    """Load labels from labels.txt or 'labels (1).txt' and strip numeric prefixes."""
-    for cand in ["labels.txt", "labels (1).txt"]:
-        if Path(cand).exists():
-            path = cand
-            break
-    else:
-        raise FileNotFoundError("Labels file not found (expected labels.txt or 'labels (1).txt').")
-
-    labels = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            s = line.strip()
-            if not s:
-                continue
-            parts = s.split(" ", 1)
-            if len(parts) > 1 and parts[0].isdigit():
-                labels.append(parts[1].strip())
-            else:
-                labels.append(s)
-    if not labels:
-        raise ValueError("Labels file is empty.")
-    return labels, path
-
-@st.cache_resource
-def load_interpreter(model_path="model.tflite"):
-    if not BACKEND:
-        raise RuntimeError(
-            f"Could not import a TFLite interpreter. Last error: {_IMPORT_ERR}\n"
-            "Install 'tflite-runtime' (recommended) or 'tensorflow' as fallback."
-        )
-    if not Path(model_path).exists():
-        raise FileNotFoundError(f"Model file not found: {model_path}")
-    interpreter = Interpreter(model_path=model_path)
-    interpreter.allocate_tensors()
-    inp, out = interpreter.get_input_details()[0], interpreter.get_output_details()[0]
-    return interpreter, inp, out, BACKEND
-
-def compress_image(image: Image.Image, max_size_kb=350, quality=85) -> Image.Image:
-    """JPEG/PNG compress to speed uploads (esp. mobile)."""
-    img = image.convert("RGB")
-    buf = BytesIO()
-    img.save(buf, format="JPEG", quality=quality, optimize=True)
-    while buf.tell()/1024 > max_size_kb and quality > 25:
-        quality -= 5
-        buf = BytesIO()
-        img.save(buf, format="JPEG", quality=quality, optimize=True)
-    buf.seek(0)
-    return Image.open(buf).convert("RGB")
-
-def preprocess(image: Image.Image, input_detail):
-    """Resize & normalize to match model input; handles NHWC/NCHW and float/uint8."""
-    shape = input_detail["shape"]  # [1,H,W,C] or [1,C,H,W]
-    if len(shape) != 4:
-        raise RuntimeError(f"Unexpected input shape: {shape}")
-
-    nchw = (shape[1] in (1,3)) and (shape[-1] not in (1,3))
-    if nchw:
-        c, h, w = int(shape[1]), int(shape[2]), int(shape[3])
-    else:
-        h, w, c = int(shape[1]), int(shape[2]), int(shape[3])
-
-    img = image.convert("RGB").resize((w, h))
-    arr = np.array(img)
-
-    if input_detail["dtype"] == np.uint8:
-        tensor = arr.astype(np.uint8)  # quantized expects [0,255]
-    else:
-        tensor = arr.astype(np.float32) / 255.0  # float32 expects [0,1]
-
-    if nchw:
-        tensor = np.transpose(tensor, (2, 0, 1))  # HWC -> CHW
-    tensor = np.expand_dims(tensor, 0)
-    return tensor
-
-def infer(image: Image.Image, interpreter, inp, out):
-    x = preprocess(image, inp)
-    interpreter.set_tensor(inp["index"], x)
-    interpreter.invoke()
-    y = interpreter.get_tensor(out["index"])[0]
-
-    # Dequantize output if needed
-    if out["dtype"] == np.uint8:
-        scale, zp = out.get("quantization", (0.0, 0))
-        y = (y.astype(np.float32) - zp) * (scale if scale else 1.0)
-
-    # Softmax to probabilities
-    y = y - np.max(y)
-    probs = np.exp(y) / np.sum(np.exp(y))
-    return probs
-
-# -------- Load assets --------
-try:
-    labels, labels_path = load_labels()
-except Exception as e:
-    st.error(f"Labels error: {e}")
-    st.stop()
-
-try:
-    interpreter, inp, out, backend = load_interpreter("model.tflite")
-except Exception as e:
-    st.error(f"Model load error: {e}")
-    st.stop()
-
-with st.expander("🔧 Model & App Info"):
-    size_mb = Path("model.tflite").stat().st_size / (1024*1024)
-    st.write(f"**Interpreter**: {backend}")
-    st.write(f"**Model**: model.tflite ({size_mb:.2f} MB)")
-    st.write(f"**Input**: shape {inp['shape']}, dtype `{inp['dtype']}`")
-    st.write(f"**Output**: shape {out['shape']}, dtype `{out['dtype']}`")
-    st.write(f"**Labels**: from `{labels_path}`")
-
-# -------- UI: Upload / Camera --------
-st.subheader("📸 Upload or Take a Photo")
-uploaded = st.file_uploader(
-    "Upload or take a photo of your eye",
-    type=["png", "jpg", "jpeg"],
-    accept_multiple_files=False,
-    help="On mobile, tap to use your camera or choose from your gallery."
+# -----------------------------
+# Page config
+# -----------------------------
+st.set_page_config(
+    page_title="EyeC - Eye Disease Detection",
+    page_icon="👁",
+    layout="centered"
 )
 
-if uploaded:
+# -----------------------------
+# CSS Styling (theme + animation)
+# -----------------------------
+st.markdown(
+    """
+    <style>
+    @keyframes fadeIn {
+        0% { opacity: 0; }
+        100% { opacity: 1; }
+    }
+    .fade-in {
+        animation: fadeIn 1.5s ease-in-out;
+    }
+    .stApp {
+        background-color: #FFF9C4; /* light yellow */
+        color: #0D47A1; /* dark blue */
+    }
+    .stButton>button {
+        background-color: #0D47A1;
+        color: white;
+    }
+    .splash {
+        text-align: center;
+        padding-top: 20%;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# -----------------------------
+# Splash Screen (Logo Optional)
+# -----------------------------
+if "splash_shown" not in st.session_state:
+    st.session_state.splash_shown = False
+
+if not st.session_state.splash_shown:
+    st.markdown("<div class='splash fade-in'>", unsafe_allow_html=True)
+
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_container_width=False)
+    else:
+        st.markdown("<h1>👁 EyeC</h1>", unsafe_allow_html=True)
+
+    st.markdown("<p>Smart Eye Disease Detection</p>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    time.sleep(2)  # splash duration
+    st.session_state.splash_shown = True
+    st.rerun()
+
+# -----------------------------
+# Disease Information
+# -----------------------------
+disease_info = {
+    "cataract": {
+        "guidance": "Cataract causes clouding of the eye lens, leading to blurred vision. Surgery is the only definitive treatment.",
+        "consult": "Please consult an ophthalmologist within the next month for evaluation."
+    },
+    "glaucoma": {
+        "guidance": "Glaucoma damages the optic nerve, often due to high eye pressure. Early detection can prevent vision loss.",
+        "consult": "Urgently consult an ophthalmologist for eye pressure testing."
+    },
+    "diabetic retinopathy": {
+        "guidance": "Caused by diabetes damaging retinal blood vessels. Can lead to blindness if untreated.",
+        "consult": "Schedule an eye exam with a retina specialist soon."
+    },
+    "normal": {
+        "guidance": "Congratulations! Your eyes appear healthy.",
+        "consult": "Maintain regular check-ups every 1-2 years."
+    }
+}
+
+# -----------------------------
+# Title & Subtitle
+# -----------------------------
+st.markdown("<h1 class='fade-in'>👁 EyeC - Eye Disease Detection</h1>", unsafe_allow_html=True)
+st.subheader("Upload an eye image or take a photo to predict disease")
+
+# -----------------------------
+# Load TFLite model
+# -----------------------------
+@st.cache_resource
+def load_tflite_model(model_path="model.tflite"):
+    interpreter = tf.lite.Interpreter(model_path=model_path)
+    interpreter.allocate_tensors()
+    return interpreter
+
+interpreter = load_tflite_model("model.tflite")
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# -----------------------------
+# Load labels
+# -----------------------------
+@st.cache_data
+def load_labels(path="labels.txt"):
+    with open(path, "r") as f:
+        labels = [line.strip() for line in f.readlines()]
+    return labels
+
+labels = load_labels("labels.txt")
+
+# -----------------------------
+# Image Input
+# -----------------------------
+uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+camera_image = st.camera_input("Take a photo")
+
+image = None
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+elif camera_image is not None:
+    image = Image.open(camera_image).convert("RGB")
+
+# -----------------------------
+# Prediction
+# -----------------------------
+if image is not None:
     try:
-        img = Image.open(uploaded).convert("RGB")
-        img = compress_image(img)  # faster on mobile
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            st.image(img, caption="Uploaded image", use_container_width=True)
-        with c2:
-            st.info(f"**Size:** {img.size[0]}×{img.size[1]}\n\n**Mode:** RGB")
+        st.image(image, use_container_width=True)
 
-        st.divider()
-        if st.button("🚀 Run Disease Detection", type="primary", use_container_width=True):
-            with st.spinner("Analyzing…"):
-                probs = infer(img, interpreter, inp, out)
+        # Preprocess image
+        input_shape = input_details[0]['shape']
+        img_resized = image.resize((input_shape[1], input_shape[2]))
+        img_array = np.array(img_resized, dtype=np.float32) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
 
-            idx = int(np.argmax(probs))
-            name = labels[idx] if idx < len(labels) else f"Class {idx}"
-            p = float(probs[idx])
+        # Run inference
+        interpreter.set_tensor(input_details[0]['index'], img_array)
+        interpreter.invoke()
+        output_data = interpreter.get_tensor(output_details[0]['index'])[0]
 
-            st.markdown("### 🎯 Primary Result")
-            if name.lower() == "normal":
-                st.success(f"✅ **HEALTHY EYE DETECTED**")
-                st.metric("Confidence", f"{p:.1%}")
-                st.balloons()
-            else:
-                st.warning(f"⚠️ **{name.upper()} DETECTED**")
-                st.metric("Confidence", f"{p:.1%}")
+        # Get predicted label
+        pred_index = np.argmax(output_data)
+        pred_label = labels[pred_index]
+        pred_confidence = output_data[pred_index]
 
-            st.markdown("### 📊 Detailed Probabilities")
-            order = np.argsort(probs)[::-1]
-            for rank, j in enumerate(order, 1):
-                label = labels[j] if j < len(labels) else f"Class {j}"
-                pj = float(probs[j])
-                st.markdown(
-                    f'<div class="prob-row"><div class="prob-label">{("🥇" if rank==1 else "🥈" if rank==2 else "🥉" if rank==3 else str(rank)+".")} {label.title()}</div><div style="flex:1">{int(pj*1000)/10:.1f}%</div></div>',
-                    unsafe_allow_html=True
-                )
-                st.progress(pj)
+        # Lowercase-safe lookup
+        pred_key = pred_label.strip().lower()
 
-            st.divider()
-            st.warning(
-                "⚠️ **Medical Disclaimer**: EyeC is a research/education demo and not a medical device. "
-                "For any symptoms or concerns, consult a licensed ophthalmologist."
-            )
-            if name.lower() != "normal":
-                with st.expander("🩺 What to do next"):
-                    st.markdown(
-                        "- Schedule a comprehensive eye exam with an ophthalmologist.\n"
-                        "- Bring this result as a reference; the doctor may perform OCT/fundus tests.\n"
-                        "- Maintain good lighting and a sharp image for re-checks."
-                    )
+        # Display results
+        if pred_key == "normal":
+            st.success(f"🎉 Congratulations! Your eyes seem healthy ({pred_confidence*100:.2f}%)")
+        else:
+            st.warning(f"Prediction: *{pred_label}* ({pred_confidence*100:.2f}%)")
+
+        # Show medical guidance
+        if pred_key in disease_info:
+            st.markdown(f"**Medical Guidance:** {disease_info[pred_key]['guidance']}")
+            st.markdown(f"**Consultation Advice:** {disease_info[pred_key]['consult']}")
+        else:
+            st.info("No specific guidance available for this condition.")
+
     except Exception as e:
         st.error(f"Error processing image: {e}")
-else:
-    st.info("👆 Tap above to take a photo or choose one from your gallery.")
