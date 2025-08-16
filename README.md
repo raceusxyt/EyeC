@@ -6,20 +6,19 @@ A Streamlit-based web application that demonstrates AI-powered eye disease detec
 
 - **Interactive Web Interface**: Clean, user-friendly Streamlit interface
 - **Real-time Analysis**: Upload and analyze eye images instantly
-- **Multiple Disease Detection**: Detects 5 different eye conditions
+- **Multiple Disease Detection**: Detects 3 different eye conditions
 - **Confidence Scoring**: Shows prediction confidence levels
 - **Educational Demo**: Demonstrates AI medical screening workflow
-- **Cross-platform**: Works on Windows, macOS, and Linux
+- **Cross-platform**: Works on Windows, Android, macOS, and Linux
 
 ## 🔍 Detected Conditions
 
 The AI model can identify the following eye conditions:
 
-1. **🔴 Cataract** - Clouding of the eye's lens
-2. **👀 Crossed Eyes** - Misalignment of the eyes (strabismus)
-3. **🩸 Diabetic Retinopathy** - Diabetes-related retinal damage
-4. **💚 Glaucoma** - Optic nerve damage from eye pressure
-5. **✅ Normal** - Healthy eye condition
+1. **⚪ Cataract** - Clouding of the eye's lens
+2. **🔴 Diabetic Retinopathy** - Diabetes-related retinal damage
+3. **🩸 Glaucoma** - Optic nerve damage from eye pressure
+4. **✅ Normal** - Healthy eye condition
 
 ## 🚀 Quick Start
 
@@ -58,7 +57,7 @@ Make sure these files are in your project directory:
 - ✅ `labels (1).txt` - Class labels for the model
 - ✅ `requirements.txt` - Python dependencies
 - ✅ `run.py` - Launcher script
-- ⚠️ `model.tflite` - TensorFlow Lite model (optional - runs in demo mode without it)
+- ✅ `model.tflite` - TensorFlow Lite model
 
 ## 💻 System Requirements
 
@@ -68,11 +67,11 @@ Make sure these files are in your project directory:
 - **Internet**: Required for initial dependency installation
 
 ### Dependencies
-
 - `streamlit>=1.28.0` - Web interface framework
-- `Pillow>=9.5.0` - Image processing
-- `numpy>=1.24.0` - Numerical computations
-
+- `pillow>=9.5.0` - Image processing
+- `numpy==1.24.0` - Numerical computations
+- `tflite-runtime==2.14.0`
+  
 ## 📖 How to Use
 
 1. **Launch the App**:
@@ -110,8 +109,6 @@ For best results, use images that are:
 
 ### Current Status: Demo Mode
 
-This application currently runs in **simulation mode** due to TensorFlow compatibility issues on macOS. The simulation:
-
 - ✅ Demonstrates the complete user interface
 - ✅ Shows realistic prediction workflows
 - ✅ Provides educational value about AI medical screening
@@ -121,7 +118,7 @@ This application currently runs in **simulation mode** due to TensorFlow compati
 
 - **Format**: TensorFlow Lite (.tflite)
 - **Input Size**: 224×224 RGB images
-- **Output**: 5-class probability distribution
+- **Output**: 4-class probability distribution
 - **Architecture**: Convolutional Neural Network
 - **Training**: Pre-trained on eye disease dataset
 
@@ -132,7 +129,6 @@ To use with actual AI inference:
 1. **Linux Environment**: Deploy on Linux servers for full TensorFlow support
 2. **Docker**: Use containerized environments for consistency
 3. **Cloud APIs**: Consider cloud-based inference services
-4. **Model Updates**: Replace simulation with actual TensorFlow Lite inference
 
 ## 🛠️ Troubleshooting
 
@@ -180,7 +176,7 @@ streamlit run app.py --server.port 8502
 
 - **UI Changes**: Edit `app.py` to customize the Streamlit interface
 - **Model Replacement**: Replace `model.tflite` with your trained model
-- **Labels Update**: Modify `labels (1).txt` for different classes
+- **Labels Update**: Modify `labels.txt` for different classes
 - **Styling**: Add custom CSS in the Streamlit app
 
 ### File Structure
@@ -190,9 +186,14 @@ EyeC/
 ├── app.py                 # Main application
 ├── run.py                 # Launcher script
 ├── requirements.txt       # Dependencies
-├── labels (1).txt        # Model labels
-├── model.tflite      # AI model (optional)
-└── README.md             # This file
+├── labels.txt             # Model labels
+├── model.tflite           # AI model
+├── .streamlit
+    └── config             # streamlit configaration
+├── dev_files
+   ├── run.py              #Launcher script
+
+└── README.md            # This file
 ```
 
 ## 📄 License
@@ -221,3 +222,4 @@ For issues or questions:
 ---
 
 **Made with ❤️ for educational AI and healthcare demonstration**
+
