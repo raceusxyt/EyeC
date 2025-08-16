@@ -191,8 +191,10 @@ EyeC/
 ├── .streamlit
     └── config             # streamlit configaration
 ├── dev_files
-   ├── run.py              #Launcher script
-
+   ├── run.py                        # Launcher script
+   ├── eye_detector_demo.py          # demo app
+   ├── simple_eye_detector.py        # development file
+   └── archive                       # development files
 └── README.md            # This file
 ```
 
@@ -222,4 +224,5 @@ For issues or questions:
 ---
 
 **Made with ❤️ for educational AI and healthcare demonstration**
+
 
