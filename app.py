@@ -1,7 +1,6 @@
 import streamlit as st
 from PIL import Image
 import numpy as np
-import tensorflow as tf
 import time
 import os
 
@@ -45,7 +44,7 @@ st.markdown(
 )
 
 # -----------------------------
-# Splash Screen (Logo Optional)
+# Splash Screen
 # -----------------------------
 if "splash_shown" not in st.session_state:
     st.session_state.splash_shown = False
@@ -58,7 +57,15 @@ if not st.session_state.splash_shown:
     else:
         st.markdown("<h1>👁 EyeC</h1>", unsafe_allow_html=True)
 
-    st.markdown("<p>Smart Eye Disease Detection</p>", unsafe_allow_html=True)
+    st.markdown(
+    """
+    <p style='text-align: center; font-size: 22px; font-weight: bold; color:#0D47A1;'>
+        Smart Eye Disease Detection
+    </p>
+    """,
+    unsafe_allow_html=True
+)
+
     st.markdown("</div>", unsafe_allow_html=True)
     time.sleep(2)  # splash duration
     st.session_state.splash_shown = True
@@ -87,23 +94,26 @@ disease_info = {
 }
 
 # -----------------------------
-# Title & Subtitle
-# -----------------------------
-st.markdown("<h1 class='fade-in'>👁 EyeC - Eye Disease Detection</h1>", unsafe_allow_html=True)
-st.subheader("Upload an eye image or take a photo to predict disease")
-
-# -----------------------------
-# Load TFLite model
+# Load TFLite model (works both locally & on Streamlit Cloud)
 # -----------------------------
 @st.cache_resource
 def load_tflite_model(model_path="model.tflite"):
-    interpreter = tf.lite.Interpreter(model_path=model_path)
-    interpreter.allocate_tensors()
-    return interpreter
+    try:
+        from tflite_runtime.interpreter import Interpreter
+    except ImportError:
+        # Fallback to TensorFlow Lite if running locally with full TF installed
+        from tensorflow.lite.python.interpreter import Interpreter
 
-interpreter = load_tflite_model("model.tflite")
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
+    interpreter = Interpreter(model_path=model_path)
+    interpreter.allocate_tensors()
+
+    # Fetch input/output details here so they're always available
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    return interpreter, input_details, output_details
+
+# Load the model once
+interpreter, input_details, output_details = load_tflite_model("model.tflite")
 
 # -----------------------------
 # Load labels
@@ -115,6 +125,12 @@ def load_labels(path="labels.txt"):
     return labels
 
 labels = load_labels("labels.txt")
+
+# -----------------------------
+# Title & Subtitle
+# -----------------------------
+st.markdown("<h1 class='fade-in'>👁 EyeC - Eye Disease Detection</h1>", unsafe_allow_html=True)
+st.subheader("Upload an eye image or take a photo to predict disease")
 
 # -----------------------------
 # Image Input
