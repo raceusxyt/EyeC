@@ -33,6 +33,8 @@ st.markdown(
     .stButton>button {
         background-color: #0D47A1;
         color: white;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
     }
     .splash {
         text-align: center;
@@ -58,16 +60,16 @@ if not st.session_state.splash_shown:
         st.markdown("<h1>👁 EyeC</h1>", unsafe_allow_html=True)
 
     st.markdown(
-    """
-    <p style='text-align: center; font-size: 22px; font-weight: bold; color:#0D47A1;'>
-        Smart Eye Disease Detection
-    </p>
-    """,
-    unsafe_allow_html=True
-)
+        """
+        <p style='text-align: center; font-size: 22px; font-weight: bold; color:#0D47A1;'>
+            Smart Eye Disease Detection
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
 
     st.markdown("</div>", unsafe_allow_html=True)
-    time.sleep(2)  # splash duration
+    time.sleep(2)  # splash duration (safe for HF)
     st.session_state.splash_shown = True
     st.rerun()
 
@@ -94,25 +96,19 @@ disease_info = {
 }
 
 # -----------------------------
-# Load TFLite model (works both locally & on Streamlit Cloud)
+# Load TFLite model
 # -----------------------------
 @st.cache_resource
 def load_tflite_model(model_path="model.tflite"):
     try:
         from tflite_runtime.interpreter import Interpreter
     except ImportError:
-        # Fallback to TensorFlow Lite if running locally with full TF installed
         from tensorflow.lite.python.interpreter import Interpreter
 
     interpreter = Interpreter(model_path=model_path)
     interpreter.allocate_tensors()
+    return interpreter, interpreter.get_input_details(), interpreter.get_output_details()
 
-    # Fetch input/output details here so they're always available
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-    return interpreter, input_details, output_details
-
-# Load the model once
 interpreter, input_details, output_details = load_tflite_model("model.tflite")
 
 # -----------------------------
@@ -120,9 +116,10 @@ interpreter, input_details, output_details = load_tflite_model("model.tflite")
 # -----------------------------
 @st.cache_data
 def load_labels(path="labels.txt"):
+    if not os.path.exists(path):
+        return ["normal", "cataract", "glaucoma", "diabetic retinopathy"]
     with open(path, "r") as f:
-        labels = [line.strip() for line in f.readlines()]
-    return labels
+        return [line.strip() for line in f.readlines()]
 
 labels = load_labels("labels.txt")
 
@@ -130,13 +127,13 @@ labels = load_labels("labels.txt")
 # Title & Subtitle
 # -----------------------------
 st.markdown("<h1 class='fade-in'>👁 EyeC - Eye Disease Detection</h1>", unsafe_allow_html=True)
-st.subheader("Upload an eye image or take a photo to predict disease")
+st.subheader("Upload an eye image or open your camera to predict disease")
 
 # -----------------------------
 # Image Input
 # -----------------------------
-uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
-camera_image = st.camera_input("Take a photo")
+uploaded_file = st.file_uploader("Upload an eye image", type=["jpg", "jpeg", "png"])
+camera_image = st.camera_input("📷 Open Camera & Take Photo")
 
 image = None
 if uploaded_file is not None:
@@ -151,7 +148,7 @@ if image is not None:
     try:
         st.image(image, use_container_width=True)
 
-        # Preprocess image
+        # Preprocess
         input_shape = input_details[0]['shape']
         img_resized = image.resize((input_shape[1], input_shape[2]))
         img_array = np.array(img_resized, dtype=np.float32) / 255.0
@@ -162,24 +159,20 @@ if image is not None:
         interpreter.invoke()
         output_data = interpreter.get_tensor(output_details[0]['index'])[0]
 
-        # Get predicted label
+        # Results
         pred_index = np.argmax(output_data)
-        pred_label = labels[pred_index]
+        pred_label = labels[pred_index].strip().lower()
         pred_confidence = output_data[pred_index]
 
-        # Lowercase-safe lookup
-        pred_key = pred_label.strip().lower()
-
-        # Display results
-        if pred_key == "normal":
+        if pred_label == "normal":
             st.success(f"🎉 Congratulations! Your eyes seem healthy ({pred_confidence*100:.2f}%)")
         else:
-            st.warning(f"Prediction: *{pred_label}* ({pred_confidence*100:.2f}%)")
+            st.warning(f"Prediction: *{pred_label.capitalize()}* ({pred_confidence*100:.2f}%)")
 
-        # Show medical guidance
-        if pred_key in disease_info:
-            st.markdown(f"**Medical Guidance:** {disease_info[pred_key]['guidance']}")
-            st.markdown(f"**Consultation Advice:** {disease_info[pred_key]['consult']}")
+        # Medical guidance
+        if pred_label in disease_info:
+            st.markdown(f"**Medical Guidance:** {disease_info[pred_label]['guidance']}")
+            st.markdown(f"**Consultation Advice:** {disease_info[pred_label]['consult']}")
         else:
             st.info("No specific guidance available for this condition.")
 
