@@ -58,7 +58,7 @@ cd EyeC
 # Run the launcher
 python run.py
 ```
-The launcher will:
+The launcher will:  
 ✔️ Check for required files  
 ✔️ Install dependencies  
 ✔️ Launch the app in your browser  
@@ -75,8 +75,8 @@ streamlit run app.py
 ---
 
 ## 📁 Project Structure
-
-EyeC/
+```
+EyeC/  
 ├── app.py              # Main Streamlit   application  
 ├── run.py              # Launcher script  
 ├── model.tflite        # AI model   (TensorFlow Lite)  
@@ -85,7 +85,7 @@ EyeC/
 ├── .streamlit/         # Streamlit config  
 ├── dev_files/          # Development/demo   files  
 └── README.md           # Documentation  
-
+```
 
 ---
 
