@@ -1,4 +1,4 @@
-👁️ EyeC – AI-Powered Eye Disease Detection
+##👁️ EyeC – AI-Powered Eye Disease Detection
 
 
 
@@ -8,7 +8,7 @@ EyeC provides a simple, educational interface for uploading fundus eye images an
 
 ---
 
-🎯 Features
+##🎯 Features
 
 🌐 Interactive Web Interface – Clean, user-friendly Streamlit UI
 
@@ -26,7 +26,7 @@ EyeC provides a simple, educational interface for uploading fundus eye images an
 
 ---
 
-🔍 Detected Conditions
+##🔍 Detected Conditions
 
 EyeC can classify images into the following conditions:
 
@@ -57,7 +57,7 @@ cd EyeC
 
 # Run the launcher
 python run.py
-
+```
 The launcher will:
 ✔️ Check for required files
 ✔️ Install dependencies
@@ -67,14 +67,14 @@ The launcher will:
 ---
 
 Option 2 – Manual Setup
-
+```bash
 pip install -r requirements.txt
 streamlit run app.py
-
+```
 
 ---
 
-📁 Project Structure
+##📁 Project Structure
 
 EyeC/
 ├── app.py              # Main Streamlit application
@@ -89,7 +89,7 @@ EyeC/
 
 ---
 
-📷 Image Guidelines
+##📷 Image Guidelines
 
 For accurate predictions, upload fundus eye images that are:
 
@@ -101,7 +101,7 @@ For accurate predictions, upload fundus eye images that are:
 
 ---
 
-🔧 Technical Details
+##🔧 Technical Details
 
 Framework: Streamlit
 
@@ -117,7 +117,7 @@ Deployment: Hugging Face Spaces (demo hosting)
 
 ---
 
-⚠️ Disclaimer
+##⚠️ Disclaimer
 
 This project is for educational and demonstration purposes only.
 
@@ -128,7 +128,7 @@ This project is for educational and demonstration purposes only.
 
 ---
 
-🤝 Contributing
+##🤝 Contributing
 
 Want to improve EyeC?
 
@@ -148,7 +148,7 @@ Want to improve EyeC?
 
 ---
 
-📞 Support
+##📞 Support
 
 Check the Troubleshooting section in this README
 
@@ -160,5 +160,5 @@ For deployment issues, ensure model + labels are correctly placed
 
 ---
 
-👁️ EyeC – Early Detection, Healthy Vision
+#👁️ EyeC – Early Detection, Healthy Vision
 Made with ❤️ for AI & healthcare education
