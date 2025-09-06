@@ -57,6 +57,7 @@ cd EyeC
 # Run the launcher
 python run.py
 
+
 The launcher will:
 ✔️ Check for required files
 ✔️ Install dependencies
