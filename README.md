@@ -59,9 +59,9 @@ cd EyeC
 python run.py
 ```
 The launcher will:
-✔️ Check for required files
-✔️ Install dependencies
-✔️ Launch the app in your browser
+✔️ Check for required files  
+✔️ Install dependencies  
+✔️ Launch the app in your browser  
 
 
 ---
@@ -77,14 +77,14 @@ streamlit run app.py
 ## 📁 Project Structure
 
 EyeC/
-├── app.py              # Main Streamlit application
-├── run.py              # Launcher script
-├── model.tflite        # AI model (TensorFlow Lite)
-├── labels.txt          # Class labels
-├── requirements.txt    # Dependencies
-├── .streamlit/         # Streamlit config
-├── dev_files/          # Development/demo files
-└── README.md           # Documentation
+├── app.py              # Main Streamlit   application  
+├── run.py              # Launcher script  
+├── model.tflite        # AI model   (TensorFlow Lite)  
+├── labels.txt          # Class labels  
+├── requirements.txt    # Dependencies  
+├── .streamlit/         # Streamlit config  
+├── dev_files/          # Development/demo   files  
+└── README.md           # Documentation  
 
 
 ---
@@ -94,9 +94,9 @@ EyeC/
 For accurate predictions, upload fundus eye images that are:
 
 ✅ Clear and well-focused  
-✅ Well-lit
-✅ High resolution (≥224×224 pixels)
-❌ Avoid blurry, dark, or off-angle images
+✅ Well-lit  
+✅ High resolution (≥224×224 pixels)  
+❌ Avoid blurry, dark, or off-angle images  
 
 
 ---
@@ -121,8 +121,8 @@ Deployment: Hugging Face Spaces (demo hosting)
 
 This project is for educational and demonstration purposes only.
 
-🚫 Not for real medical diagnosis
-🚫 Not a replacement for professional consultation
+🚫 Not for real medical diagnosis  
+🚫 Not a replacement for professional consultation  
 ✅ Always consult a qualified ophthalmologist for medical advice
 
 
