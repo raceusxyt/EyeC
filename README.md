@@ -46,7 +46,7 @@ EyeC can classify images into the following conditions:
 
 ---
 
-🚀 Quick Start
+## 🚀 Quick Start
 
 ### Option 1 – Using the Launcher (Recommended)  
 
@@ -56,24 +56,26 @@ git clone https://github.com/your-repo/EyeC.git
 cd EyeC
 
 # Run the launcher
-python run.py```
-
+python run.py
 
 The launcher will:
 ✔️ Check for required files
 ✔️ Install dependencies
 ✔️ Launch the app in your browser
 
+
+---
+
 Option 2 – Manual Setup
 
-```pip install -r requirements.txt
-streamlit run app.py```
+pip install -r requirements.txt
+streamlit run app.py
 
 
 ---
 
 📁 Project Structure
-```
+
 EyeC/
 ├── app.py              # Main Streamlit application
 ├── run.py              # Launcher script
@@ -83,7 +85,7 @@ EyeC/
 ├── .streamlit/         # Streamlit config
 ├── dev_files/          # Development/demo files
 └── README.md           # Documentation
-```
+
 
 ---
 
@@ -92,13 +94,9 @@ EyeC/
 For accurate predictions, upload fundus eye images that are:
 
 ✅ Clear and well-focused
-
 ✅ Well-lit
-
 ✅ High resolution (≥224×224 pixels)
-
 ❌ Avoid blurry, dark, or off-angle images
-
 
 
 ---
@@ -124,11 +122,8 @@ Deployment: Hugging Face Spaces (demo hosting)
 This project is for educational and demonstration purposes only.
 
 🚫 Not for real medical diagnosis
-
 🚫 Not a replacement for professional consultation
-
 ✅ Always consult a qualified ophthalmologist for medical advice
-
 
 
 ---
@@ -166,5 +161,4 @@ For deployment issues, ensure model + labels are correctly placed
 ---
 
 👁️ EyeC – Early Detection, Healthy Vision
-
 Made with ❤️ for AI & healthcare education
