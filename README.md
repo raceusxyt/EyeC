@@ -48,8 +48,9 @@ EyeC can classify images into the following conditions:
 
 🚀 Quick Start
 
-Option 1 – Using the Launcher (Recommended)
+### Option 1 – Using the Launcher (Recommended)  
 
+```bash
 # Clone project
 git clone https://github.com/your-repo/EyeC.git
 cd EyeC
