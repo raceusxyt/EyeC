@@ -101,7 +101,7 @@ For accurate predictions, upload fundus eye images that are:
 
 ---
 
-##🔧 Technical Details
+## 🔧 Technical Details
 
 Framework: Streamlit
 
