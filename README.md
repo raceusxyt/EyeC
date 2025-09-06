@@ -56,7 +56,7 @@ git clone https://github.com/your-repo/EyeC.git
 cd EyeC
 
 # Run the launcher
-python run.py
+python run.py```
 
 
 The launcher will:
@@ -66,14 +66,14 @@ The launcher will:
 
 Option 2 – Manual Setup
 
-pip install -r requirements.txt
-streamlit run app.py
+```pip install -r requirements.txt
+streamlit run app.py```
 
 
 ---
 
 📁 Project Structure
-
+```
 EyeC/
 ├── app.py              # Main Streamlit application
 ├── run.py              # Launcher script
@@ -83,7 +83,7 @@ EyeC/
 ├── .streamlit/         # Streamlit config
 ├── dev_files/          # Development/demo files
 └── README.md           # Documentation
-
+```
 
 ---
 
