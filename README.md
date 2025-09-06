@@ -77,13 +77,13 @@ streamlit run app.py
 ## 📁 Project Structure
 ```
 EyeC/  
-├── app.py              # Main Streamlit   application  
+├── app.py              # Main Streamlit application  
 ├── run.py              # Launcher script  
 ├── model.tflite        # AI model   (TensorFlow Lite)  
 ├── labels.txt          # Class labels  
 ├── requirements.txt    # Dependencies  
 ├── .streamlit/         # Streamlit config  
-├── dev_files/          # Development/demo   files  
+├── dev_files/          # Development/demo files  
 └── README.md           # Documentation  
 ```
 
@@ -152,8 +152,10 @@ Want to improve EyeC?
 
 Check the Troubleshooting section in this README
 
-Verify dependencies with pip install -r requirements.txt
-
+Verify dependencies with 
+```
+pip install -r requirements.txt
+```
 For deployment issues, ensure model + labels are correctly placed
 
 
