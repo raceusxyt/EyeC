@@ -93,7 +93,7 @@ EyeC/
 
 For accurate predictions, upload fundus eye images that are:
 
-✅ Clear and well-focused
+✅ Clear and well-focused  
 ✅ Well-lit
 ✅ High resolution (≥224×224 pixels)
 ❌ Avoid blurry, dark, or off-angle images
