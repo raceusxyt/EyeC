@@ -26,7 +26,7 @@ EyeC provides a simple, educational interface for uploading fundus eye images an
 
 ---
 
-##🔍 Detected Conditions
+## 🔍 Detected Conditions
 
 EyeC can classify images into the following conditions:
 
