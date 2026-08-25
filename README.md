@@ -164,3 +164,6 @@ For deployment issues, ensure model + labels are correctly placed
 
 ### 👁️ EyeC – Early Detection, Healthy Vision
 Made with ❤️ for AI & healthcare education
+
+url: https://raceus-eyec.hf.space/
+app: raceus-eyec.hf.space
